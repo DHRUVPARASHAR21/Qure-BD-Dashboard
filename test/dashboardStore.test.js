@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DASHBOARD_STORE_KEY, createAction, createSeedDashboard, loadDashboard, markRemindersSent, saveDashboard, saveWeeklyReviewNote, toggleActionComplete } from '../src/data/dashboardStore.js';
+import { DASHBOARD_STORE_KEY, createAction, createGoal, createSeedDashboard, deleteGoal, loadDashboard, markRemindersSent, saveDashboard, saveWeeklyReviewNote, toggleActionComplete, updateGoal } from '../src/data/dashboardStore.js';
 
 function memoryStorage() {
   const values = new Map();
@@ -16,9 +16,9 @@ test('hydrates seed data when storage is empty', () => {
 test('round-trips a dashboard through storage', () => {
   const storage = memoryStorage();
   const dashboard = createSeedDashboard();
-  dashboard.goals[0][3] = 'On track';
+  dashboard.goals[0].status = 'On track';
   assert.equal(saveDashboard(dashboard, storage), true);
-  assert.equal(loadDashboard(storage).goals[0][3], 'On track');
+  assert.equal(loadDashboard(storage).goals[0].status, 'On track');
   assert.ok(JSON.parse(storage.getItem(DASHBOARD_STORE_KEY)).savedAt);
 });
 
@@ -45,4 +45,14 @@ test('saves weekly review notes across storage reloads', () => {
   assert.ok(withNote.weeklyReview.notes[0].savedAt);
   saveDashboard(withNote, storage);
   assert.equal(loadDashboard(storage).weeklyReview.notes[0].body, 'Legal confirmed the Novartis DPA route.');
+});
+
+test('creates, edits and removes goal milestones', () => {
+  const initial = createSeedDashboard();
+  const created = createGoal(initial, { title: 'Publish India evidence plan', workstream: 'Evidence-led market access', owner: 'Dr. Meera Shah', status: 'On track', progress: '1 / 3', dueDate: '20 Oct', confidence: 76 });
+  const added = created.goals.at(-1);
+  const updated = updateGoal(created, added.id, { ...added, owner: 'Ananya Rao', status: 'At risk', progress: '1 / 4', confidence: 55 });
+  assert.equal(updated.goals.at(-1).owner, 'Ananya Rao');
+  assert.equal(updated.goals.at(-1).confidence, 55);
+  assert.equal(deleteGoal(updated, added.id).goals.length, initial.goals.length);
 });
