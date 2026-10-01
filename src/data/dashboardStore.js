@@ -100,6 +100,10 @@ export function createGoal(dashboard, goal) {
   return { ...dashboard, goals: [...dashboard.goals, { id: id('goal'), ...cleanGoal, createdAt: new Date().toISOString() }] };
 }
 
+export function importGoals(dashboard, goals) {
+  return goals.reduce((current, goal) => createGoal(current, goal), dashboard);
+}
+
 export function updateGoal(dashboard, goalId, changes) {
   const cleanGoal = sanitizeGoal(changes);
   if (!cleanGoal) return dashboard;
