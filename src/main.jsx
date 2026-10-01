@@ -8,7 +8,7 @@ import './qure-brand-refinement.css';
 import './qure-depth.css';
 
 const Status = ({ value }) => <span className={`status ${value.toLowerCase().replace(' ', '-')}`}>{value}</span>;
-const Bars = () => <div className="bars">{[32, 41, 47, 54, 49, 62, 66, 73, 68].map((value, index) => <div key={index}><i style={{ height: `${value}%` }}></i><small>{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'][index]}</small></div>)}</div>;
+const Bars = () => <div className="bars">{[32, 41, 47, 54, 49, 62, 66, 73, 68].map((value, index) => <div key={index} style={{ '--bar': index }}><i style={{ height: `${value}%` }}></i><small>{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'][index]}</small></div>)}</div>;
 function CountUp({ value, suffix = '' }) {
   const [display, setDisplay] = useState(0);
   useEffect(() => {
