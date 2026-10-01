@@ -1,5 +1,5 @@
 export const DASHBOARD_STORE_KEY = 'qure.life-sciences-bd.dashboard.v1';
-export const DASHBOARD_SCHEMA_VERSION = 4;
+export const DASHBOARD_SCHEMA_VERSION = 5;
 
 const seedGoals = [
   ['Close Novartis evidence collaboration', 'Strategic pharma partnerships', 'Ananya Rao', 'At risk', '2 / 4', '18 Oct', 62],
@@ -10,10 +10,10 @@ const seedGoals = [
 ];
 
 const seedTasks = [
-  { id: 'act-clinical-endpoints', title: 'Confirm clinical endpoint assumptions', owner: 'Dr. Meera Shah', dueDate: 'Today', status: 'Overdue' },
-  { id: 'act-novartis-dpa', title: 'Resolve Novartis DPA redlines', owner: 'Ananya Rao', dueDate: '02 Oct', status: 'In progress' },
-  { id: 'act-roche-pricing', title: 'Approve Roche pricing guardrails', owner: 'Amit Kulkarni', dueDate: '03 Oct', status: 'Not started' },
-  { id: 'act-gcc-brief', title: 'Publish GCC whitespace brief', owner: 'Vikram Iyer', dueDate: '07 Oct', status: 'In progress' },
+  { id: 'act-clinical-endpoints', title: 'Confirm clinical endpoint assumptions', owner: 'Dr. Meera Shah', workstream: 'Evidence-led market access', dueDate: 'Today', status: 'Overdue' },
+  { id: 'act-novartis-dpa', title: 'Resolve Novartis DPA redlines', owner: 'Ananya Rao', workstream: 'Strategic pharma partnerships', dueDate: '02 Oct', status: 'In progress' },
+  { id: 'act-roche-pricing', title: 'Approve Roche pricing guardrails', owner: 'Amit Kulkarni', workstream: 'Proposal conversion', dueDate: '03 Oct', status: 'Not started' },
+  { id: 'act-gcc-brief', title: 'Publish GCC whitespace brief', owner: 'Vikram Iyer', workstream: 'Whitespace opportunities', dueDate: '07 Oct', status: 'In progress' },
 ];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -26,6 +26,15 @@ function goalFromLegacy(goal, index) {
 
 function validGoal(goal) {
   return goal && typeof goal.id === 'string' && typeof goal.title === 'string' && typeof goal.workstream === 'string' && typeof goal.owner === 'string' && typeof goal.status === 'string' && typeof goal.progress === 'string' && typeof goal.dueDate === 'string' && Number.isFinite(Number(goal.confidence));
+}
+
+function inferTaskWorkstream(task) {
+  if (task.workstream) return task.workstream;
+  if (task.id?.includes('clinical')) return 'Evidence-led market access';
+  if (task.id?.includes('novartis')) return 'Strategic pharma partnerships';
+  if (task.id?.includes('roche')) return 'Proposal conversion';
+  if (task.id?.includes('gcc')) return 'Whitespace opportunities';
+  return 'General operating cadence';
 }
 
 export function createSeedDashboard() {
@@ -43,11 +52,14 @@ function isDashboard(value) {
 }
 
 function migrateDashboard(value) {
-  if (!value || ![1, 2, 3].includes(value.schemaVersion) || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
+  if (!value || ![1, 2, 3, 4].includes(value.schemaVersion) || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
   return {
     schemaVersion: DASHBOARD_SCHEMA_VERSION,
     goals: value.goals.map(goalFromLegacy),
-    tasks: value.tasks.map((task, index) => Array.isArray(task) ? { id: `migrated-action-${index}`, title: task[0], owner: task[1], dueDate: task[2], status: task[3] } : task),
+    tasks: value.tasks.map((task, index) => {
+      const normalized = Array.isArray(task) ? { id: `migrated-action-${index}`, title: task[0], owner: task[1], dueDate: task[2], status: task[3] } : task;
+      return { ...normalized, workstream: inferTaskWorkstream(normalized) };
+    }),
     weeklyReview: value.weeklyReview?.notes ? value.weeklyReview : { notes: [], savedAt: null },
     savedAt: value.savedAt ?? null,
   };
@@ -99,7 +111,7 @@ export function createAction(dashboard, action) {
   const title = action.title?.trim();
   const owner = action.owner?.trim();
   if (!title || !owner || !action.dueDate) return dashboard;
-  return { ...dashboard, tasks: [...dashboard.tasks, { id: id('action'), title, owner, dueDate: action.dueDate, status: action.status ?? 'Not started', createdAt: new Date().toISOString() }] };
+  return { ...dashboard, tasks: [...dashboard.tasks, { id: id('action'), title, owner, workstream: action.workstream?.trim() || 'General operating cadence', dueDate: action.dueDate, status: action.status ?? 'Not started', createdAt: new Date().toISOString() }] };
 }
 
 export function toggleActionComplete(dashboard, actionId) {

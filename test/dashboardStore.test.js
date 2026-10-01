@@ -30,12 +30,19 @@ test('recovers safely from corrupt stored data', () => {
 
 test('creates, completes and timestamps action reminders', () => {
   const initial = createSeedDashboard();
-  const withAction = createAction(initial, { title: 'Review APAC evidence scope', owner: 'Ananya Rao', dueDate: '10 Oct' });
+  const withAction = createAction(initial, { title: 'Review APAC evidence scope', owner: 'Ananya Rao', workstream: 'Evidence-led market access', dueDate: '10 Oct' });
   const completed = toggleActionComplete(withAction, withAction.tasks.at(-1).id);
   const reminded = markRemindersSent(completed);
   assert.equal(reminded.tasks.length, 5);
   assert.equal(reminded.tasks.at(-1).status, 'Complete');
+  assert.equal(reminded.tasks.at(-1).workstream, 'Evidence-led market access');
   assert.equal(reminded.tasks[0].reminderSentAt.length > 0, true);
+});
+
+test('migrates existing action items with linked workstreams', () => {
+  const storage = memoryStorage();
+  storage.setItem(DASHBOARD_STORE_KEY, JSON.stringify({ schemaVersion: 4, goals: createSeedDashboard().goals, tasks: [{ id: 'act-novartis-dpa', title: 'Resolve Novartis DPA redlines', owner: 'Ananya Rao', dueDate: '02 Oct', status: 'In progress' }], weeklyReview: { notes: [] } }));
+  assert.equal(loadDashboard(storage).tasks[0].workstream, 'Strategic pharma partnerships');
 });
 
 test('saves weekly review notes across storage reloads', () => {
