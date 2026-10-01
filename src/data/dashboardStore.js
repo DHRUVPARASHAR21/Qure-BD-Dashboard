@@ -1,5 +1,5 @@
 export const DASHBOARD_STORE_KEY = 'qure.life-sciences-bd.dashboard.v1';
-export const DASHBOARD_SCHEMA_VERSION = 5;
+export const DASHBOARD_SCHEMA_VERSION = 6;
 
 const seedGoals = [
   ['Close Novartis evidence collaboration', 'Strategic pharma partnerships', 'Ananya Rao', 'At risk', '2 / 4', '18 Oct', 62],
@@ -18,6 +18,7 @@ const seedTasks = [
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const id = (prefix) => globalThis.crypto?.randomUUID?.() ?? `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const defaultTracker = () => ({ filters: { query: '', owner: 'All owners', status: 'All statuses', workstream: 'All workstreams' }, savedViews: [] });
 
 function goalFromLegacy(goal, index) {
   if (!Array.isArray(goal)) return goal;
@@ -43,16 +44,17 @@ export function createSeedDashboard() {
     goals: seedGoals.map(goalFromLegacy),
     tasks: clone(seedTasks),
     weeklyReview: { notes: [], savedAt: null },
+    tracker: defaultTracker(),
     savedAt: null,
   };
 }
 
 function isDashboard(value) {
-  return value && value.schemaVersion === DASHBOARD_SCHEMA_VERSION && Array.isArray(value.goals) && value.goals.every(validGoal) && Array.isArray(value.tasks) && Array.isArray(value.weeklyReview?.notes);
+  return value && value.schemaVersion === DASHBOARD_SCHEMA_VERSION && Array.isArray(value.goals) && value.goals.every(validGoal) && Array.isArray(value.tasks) && Array.isArray(value.weeklyReview?.notes) && value.tracker && typeof value.tracker.filters === 'object' && Array.isArray(value.tracker.savedViews);
 }
 
 function migrateDashboard(value) {
-  if (!value || ![1, 2, 3, 4].includes(value.schemaVersion) || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
+  if (!value || ![1, 2, 3, 4, 5].includes(value.schemaVersion) || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
   return {
     schemaVersion: DASHBOARD_SCHEMA_VERSION,
     goals: value.goals.map(goalFromLegacy),
@@ -61,6 +63,7 @@ function migrateDashboard(value) {
       return { ...normalized, workstream: inferTaskWorkstream(normalized) };
     }),
     weeklyReview: value.weeklyReview?.notes ? value.weeklyReview : { notes: [], savedAt: null },
+    tracker: value.tracker?.filters && Array.isArray(value.tracker.savedViews) ? value.tracker : defaultTracker(),
     savedAt: value.savedAt ?? null,
   };
 }
@@ -105,6 +108,20 @@ export function updateGoal(dashboard, goalId, changes) {
 
 export function deleteGoal(dashboard, goalId) {
   return { ...dashboard, goals: dashboard.goals.filter((goal) => goal.id !== goalId) };
+}
+
+export function saveTrackerFilters(dashboard, filters) {
+  return { ...dashboard, tracker: { ...dashboard.tracker, filters: { ...defaultTracker().filters, ...filters } } };
+}
+
+export function createSavedView(dashboard, name, filters) {
+  const title = name?.trim();
+  if (!title) return dashboard;
+  return { ...dashboard, tracker: { ...dashboard.tracker, savedViews: [...dashboard.tracker.savedViews, { id: id('view'), name: title, filters: { ...defaultTracker().filters, ...filters }, createdAt: new Date().toISOString() }] } };
+}
+
+export function deleteSavedView(dashboard, viewId) {
+  return { ...dashboard, tracker: { ...dashboard.tracker, savedViews: dashboard.tracker.savedViews.filter((view) => view.id !== viewId) } };
 }
 
 export function createAction(dashboard, action) {

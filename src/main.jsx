@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ArrowUpRight, CalendarBlank, ChartLineUp, CheckCircle, Clock, Database, DownloadSimple, FileText, Funnel, MagnifyingGlass, Plus, TrendUp, UsersThree, WarningCircle, X } from '@phosphor-icons/react';
-import { createAction, createGoal, deleteGoal, loadDashboard, markRemindersSent, saveDashboard, saveWeeklyReviewNote, toggleActionComplete, updateGoal } from './data/dashboardStore';
+import { createAction, createGoal, createSavedView, deleteGoal, deleteSavedView, loadDashboard, markRemindersSent, saveDashboard, saveTrackerFilters, saveWeeklyReviewNote, toggleActionComplete, updateGoal } from './data/dashboardStore';
 import './styles.css';
 import './qure-theme.css';
 import './qure-brand-refinement.css';
@@ -36,16 +36,20 @@ function CountUp({ value, suffix = '' }) {
 
 function App() {
   const [page, setPage] = useState('Overview');
-  const [query, setQuery] = useState('');
   const [toast, setToast] = useState('');
   const [dashboard, setDashboard] = useState(() => loadDashboard());
+  const [trackerFilters, setTrackerFilters] = useState(() => dashboard.tracker.filters);
   const [composerOpen, setComposerOpen] = useState(false);
   const [goalComposer, setGoalComposer] = useState(null);
   const [statusPulse, setStatusPulse] = useState(null);
   const [kpiDrilldown, setKpiDrilldown] = useState(null);
+  const [viewComposerOpen, setViewComposerOpen] = useState(false);
   const notify = (message) => { setToast(message); setTimeout(() => setToast(''), 2500); };
   const goals = dashboard.goals;
-  const filteredGoals = useMemo(() => goals.filter((goal) => Object.values(goal).join(' ').toLowerCase().includes(query.toLowerCase())), [goals, query]);
+  const filteredGoals = useMemo(() => goals.filter((goal) => {
+    const queryMatch = Object.values(goal).join(' ').toLowerCase().includes(trackerFilters.query.toLowerCase());
+    return queryMatch && (trackerFilters.owner === 'All owners' || goal.owner === trackerFilters.owner) && (trackerFilters.status === 'All statuses' || goal.status === trackerFilters.status) && (trackerFilters.workstream === 'All workstreams' || goal.workstream === trackerFilters.workstream);
+  }), [goals, trackerFilters]);
   const navigation = [['Overview', ChartLineUp], ['Goal tracker', CheckCircle], ['Weekly review', CalendarBlank], ['Analytics', TrendUp], ['Data & admin', Database]];
 
   useEffect(() => { saveDashboard(dashboard); }, [dashboard]);
@@ -74,6 +78,18 @@ function App() {
     setGoalComposer(null);
     notify('Milestone removed from the annual plan');
   };
+  const updateTrackerFilters = (changes) => {
+    const next = { ...trackerFilters, ...changes };
+    setTrackerFilters(next);
+    setDashboard((current) => saveTrackerFilters(current, next));
+  };
+  const saveView = (name) => {
+    setDashboard((current) => createSavedView(current, name, trackerFilters));
+    setViewComposerOpen(false);
+    notify('Saved view added to this workspace');
+  };
+  const applyView = (view) => { updateTrackerFilters(view.filters); notify(`Applied ${view.name}`); };
+  const removeView = (viewId) => { setDashboard((current) => deleteSavedView(current, viewId)); notify('Saved view removed'); };
 
   return <div className="app">
     <aside>
@@ -85,13 +101,14 @@ function App() {
     <main>
       <header><div>Life Sciences <i>/</i> FY26 operating cadence</div><div><button aria-label="Alerts"><WarningCircle size={19}/></button><button className="primary" onClick={() => setComposerOpen(true)}><Plus size={17}/>Add action</button></div></header>
       {page === 'Overview' && <Overview tasks={dashboard.tasks} goals={dashboard.goals} onDrilldown={setKpiDrilldown} go={() => setPage('Goal tracker')}/>}
-      {page === 'Goal tracker' && <Tracker filtered={filteredGoals} query={query} setQuery={setQuery} notify={notify} onCreate={() => setGoalComposer({ mode: 'create' })} onEdit={(goal) => setGoalComposer({ mode: 'edit', goal })} statusPulse={statusPulse} onPulseEnd={() => setStatusPulse(null)}/>}
+      {page === 'Goal tracker' && <Tracker goals={goals} filtered={filteredGoals} filters={trackerFilters} onFilterChange={updateTrackerFilters} savedViews={dashboard.tracker.savedViews} onSaveView={() => setViewComposerOpen(true)} onApplyView={applyView} onDeleteView={removeView} notify={notify} onCreate={() => setGoalComposer({ mode: 'create' })} onEdit={(goal) => setGoalComposer({ mode: 'edit', goal })} statusPulse={statusPulse} onPulseEnd={() => setStatusPulse(null)}/>}
       {page === 'Weekly review' && <Review tasks={dashboard.tasks} weeklyReview={dashboard.weeklyReview} onToggleComplete={toggleComplete} onReminders={sendReminders} onSaveNote={saveReviewNote} notify={notify} statusPulse={statusPulse} onPulseEnd={() => setStatusPulse(null)}/>}
       {page === 'Analytics' && <Analytics/>}
       {page === 'Data & admin' && <Admin/>}
     </main>
     {composerOpen && <ActionComposer onClose={() => setComposerOpen(false)} onSave={addAction}/>}
     {goalComposer && <GoalComposer goal={goalComposer.goal} onClose={() => setGoalComposer(null)} onSave={saveGoal} onDelete={goalComposer.mode === 'edit' ? removeGoal : null}/>}
+    {viewComposerOpen && <SavedViewComposer onClose={() => setViewComposerOpen(false)} onSave={saveView}/>}
     {kpiDrilldown && <KpiDrilldown kpi={kpiDrilldown} goals={dashboard.goals} tasks={dashboard.tasks} notes={dashboard.weeklyReview.notes} onClose={() => setKpiDrilldown(null)} onOpenTracker={() => { setKpiDrilldown(null); setPage('Goal tracker'); }}/>}
     {toast && <div className="toast" role="status"><CheckCircle size={18}/>{toast}</div>}
   </div>;
@@ -104,7 +121,9 @@ function Overview({ tasks, goals, onDrilldown, go }) {
   return <><Top tag="Executive overview" title="Keep the year moving forward." sub="September close. 92 days remain in FY26."/><section className="annual"><div><small>ANNUAL PLAN PROGRESS</small><strong><CountUp value={64}/><sup>%</sup></strong><p>Weighted across 6 annual objectives</p></div><div className="plan"><span>Plan attainment <b>Target: 75% by Sep</b></span><div><i></i><em></em></div><small>0% <b>FY26 target</b> 100%</small></div><div className="forecast">FORECAST<strong><CountUp value={82} suffix="%"/></strong><p>↑ 7 pts above current pace</p></div></section><section className="kpis">{kpis.map((kpi, index) => <article key={kpi[0]} style={{ '--item': index }} role="button" tabIndex="0" aria-label={`View ${kpi[0]} details`} onClick={() => onDrilldown(kpi[0])} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onDrilldown(kpi[0]); } }}><p>{kpi[0]}</p><strong>{kpi[1]}<ArrowUpRight size={17}/></strong><small className={index === 2 || index === 3 ? 'bad' : ''}>{kpi[2]}</small></article>)}</section><section className="two"><article className="panel"><div className="panelhead"><div><small>MONTHLY PERFORMANCE</small><h2>Pipeline progression</h2></div><button>View report <ArrowUpRight size={14}/></button></div><div className="metric">$5.6M <span>Qualified pipeline</span><b>+12.4% vs Aug</b></div><Bars/><p className="legend">■ Actual　□ Target trajectory</p></article><article className="panel"><div className="panelhead"><div><small>NEEDS ATTENTION</small><h2>Three items need a decision</h2></div><button onClick={go}>View all <ArrowUpRight size={14}/></button></div>{tasks.filter((task) => task.status !== 'Complete').slice(0, 3).map((task) => <div className="attention" key={task.id}><b></b><div><strong>{task.title}</strong><small>{task.owner} · Due {task.dueDate}</small></div><Status value={task.status}/></div>)}</article></section><section className="three"><article className="panel insight"><small>AI INSIGHT</small><h3>Proposal turnaround is 18% behind plan.</h3><p>Three submissions are waiting on clinical or health economics inputs. Clearing them this week protects $1.3M in Q4 pipeline.</p><button>Review in agenda <ArrowUpRight size={14}/></button></article><article className="panel"><small>RAG DISTRIBUTION</small><div className="rag"><span>● <b>3</b> On track</span><span>● <b>2</b> At risk</span><span>● <b>1</b> Off track</span></div></article><article className="panel"><small>OWNERSHIP GAPS</small><h3>2 actions lack a named reviewer</h3><p>Clinical protocol sign-off and UK evidence budget decision.</p><button>Assign owners <ArrowUpRight size={14}/></button></article></section></>;
 }
 
-function Tracker({ filtered, query, setQuery, notify, onCreate, onEdit, statusPulse, onPulseEnd }) {
+function Tracker({ goals, filtered, filters, onFilterChange, savedViews, onSaveView, onApplyView, onDeleteView, notify, onCreate, onEdit, statusPulse, onPulseEnd }) {
+  const owners = [...new Set(goals.map((goal) => goal.owner))].sort();
+  const workstreams = [...new Set(goals.map((goal) => goal.workstream))].sort();
   const exportCsv = () => {
     const headers = 'Milestone,Workstream,Owner,Status,Progress,Due,Confidence';
     const rows = filtered.map((goal) => [goal.title, goal.workstream, goal.owner, goal.status, goal.progress, goal.dueDate, `${goal.confidence}%`].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','));
@@ -115,7 +134,7 @@ function Tracker({ filtered, query, setQuery, notify, onCreate, onEdit, statusPu
     URL.revokeObjectURL(link.href);
     notify('Goal tracker exported as CSV');
   };
-  return <><Top tag="Annual plan" title="Goal tracker" sub="Objective → key result → monthly milestone → action item"><div className="tracker-actions"><button onClick={exportCsv}><DownloadSimple size={17}/>Export CSV</button><button className="primary" onClick={onCreate}><Plus size={17}/>Add milestone</button></div></Top><section className="filters"><label><MagnifyingGlass size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search goals, milestones or notes"/></label><select><option>September 2026</option></select><select><option>All owners</option></select><button><Funnel size={16}/>More filters</button></section><section className="table"><div>{filtered.length} milestones <span>Click a row to edit its details</span></div><table><thead><tr><th>Objective / milestone</th><th>Owner</th><th>Status</th><th>Progress</th><th>Due</th><th>Confidence</th></tr></thead><tbody>{filtered.map((goal, index) => <tr tabIndex="0" style={{ '--row': index }} onClick={() => onEdit(goal)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onEdit(goal); } }} key={goal.id}><td><strong>{goal.title}</strong><small>{goal.workstream}</small></td><td>{goal.owner}</td><td><Status value={goal.status} pulse={statusPulse?.kind === 'goal' && statusPulse.id === goal.id} onPulseEnd={onPulseEnd}/></td><td>{goal.progress}</td><td>{goal.dueDate}</td><td><i className="conf"><b style={{ width: `${goal.confidence}%` }}></b></i> {goal.confidence}%</td></tr>)}</tbody></table></section><div className="empty"><FileText size={23}/><div><strong>Need a new planning view?</strong><p>Saved views can be shared by workstream, market or annual objective.</p></div><button>Create saved view</button></div></>;
+  return <><Top tag="Annual plan" title="Goal tracker" sub="Objective → key result → monthly milestone → action item"><div className="tracker-actions"><button onClick={exportCsv}><DownloadSimple size={17}/>Export CSV</button><button className="primary" onClick={onCreate}><Plus size={17}/>Add milestone</button></div></Top><section className="filters"><label><MagnifyingGlass size={17}/><input value={filters.query} onChange={(event) => onFilterChange({ query: event.target.value })} placeholder="Search goals, milestones or notes"/></label><select value={filters.owner} onChange={(event) => onFilterChange({ owner: event.target.value })}><option>All owners</option>{owners.map((owner) => <option key={owner}>{owner}</option>)}</select><select value={filters.status} onChange={(event) => onFilterChange({ status: event.target.value })}><option>All statuses</option><option>On track</option><option>At risk</option><option>Off track</option></select><select value={filters.workstream} onChange={(event) => onFilterChange({ workstream: event.target.value })}><option>All workstreams</option>{workstreams.map((workstream) => <option key={workstream}>{workstream}</option>)}</select><button onClick={() => onFilterChange({ query: '', owner: 'All owners', status: 'All statuses', workstream: 'All workstreams' })}><Funnel size={16}/>Reset</button><button className="save-view" onClick={onSaveView}>Save view</button></section>{savedViews.length > 0 && <section className="saved-views" aria-label="Saved tracker views"><small>SAVED VIEWS</small>{savedViews.map((view) => <span key={view.id}><button onClick={() => onApplyView(view)}>{view.name}</button><button onClick={() => onDeleteView(view.id)} aria-label={`Remove saved view ${view.name}`}><X size={12}/></button></span>)}</section>}<section className="table"><div>{filtered.length} milestones <span>Click a row to edit its details</span></div><table><thead><tr><th>Objective / milestone</th><th>Owner</th><th>Status</th><th>Progress</th><th>Due</th><th>Confidence</th></tr></thead><tbody>{filtered.map((goal, index) => <tr tabIndex="0" style={{ '--row': index }} onClick={() => onEdit(goal)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onEdit(goal); } }} key={goal.id}><td><strong>{goal.title}</strong><small>{goal.workstream}</small></td><td>{goal.owner}</td><td><Status value={goal.status} pulse={statusPulse?.kind === 'goal' && statusPulse.id === goal.id} onPulseEnd={onPulseEnd}/></td><td>{goal.progress}</td><td>{goal.dueDate}</td><td><i className="conf"><b style={{ width: `${goal.confidence}%` }}></b></i> {goal.confidence}%</td></tr>)}</tbody></table></section><div className="empty"><FileText size={23}/><div><strong>Need a new planning view?</strong><p>Saved views can be shared by workstream, market or annual objective.</p></div><button onClick={onSaveView}>Create saved view</button></div></>;
 }
 
 function Review({ tasks, weeklyReview, onToggleComplete, onReminders, onSaveNote, notify, statusPulse, onPulseEnd }) {
@@ -130,6 +149,12 @@ function ActionComposer({ onClose, onSave }) {
   const update = (event) => setDraft((current) => ({ ...current, [event.target.name]: event.target.value }));
   const submit = (event) => { event.preventDefault(); onSave(draft); };
   return <div className="modal-backdrop" role="presentation"><form className="action-composer" onSubmit={submit} aria-labelledby="action-composer-title"><div className="composer-head"><div><small>NEW ACTION ITEM</small><h2 id="action-composer-title">Turn a commitment into action</h2></div><button type="button" className="close-composer" onClick={onClose} aria-label="Close action composer"><X size={20}/></button></div><label>Action title<input autoFocus required name="title" value={draft.title} onChange={update} placeholder="e.g. Confirm APAC protocol scope"/></label><div className="composer-fields"><label>Assignee<input required name="owner" value={draft.owner} onChange={update} placeholder="Name of accountable owner"/></label><label>Workstream<select name="workstream" value={draft.workstream} onChange={update}><option>General operating cadence</option><option>Qualified pipeline</option><option>Strategic pharma partnerships</option><option>Proposal conversion</option><option>Evidence-led market access</option><option>Whitespace opportunities</option></select></label></div><div className="composer-fields"><label>Due date<input required type="date" name="dueDate" value={draft.dueDate} onChange={update}/></label><label>Status<select name="status" value={draft.status} onChange={update}><option>Not started</option><option>In progress</option></select></label></div><div className="composer-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit"><Plus size={17}/>Add action</button></div></form></div>;
+}
+
+function SavedViewComposer({ onClose, onSave }) {
+  const [name, setName] = useState('');
+  const submit = (event) => { event.preventDefault(); onSave(name); };
+  return <div className="modal-backdrop" role="presentation"><form className="action-composer saved-view-composer" onSubmit={submit} aria-labelledby="saved-view-title"><div className="composer-head"><div><small>SAVED VIEW</small><h2 id="saved-view-title">Name this tracker view</h2></div><button type="button" className="close-composer" onClick={onClose} aria-label="Close saved view composer"><X size={20}/></button></div><p className="composer-copy">The current search and filters will be saved for this workspace.</p><label>View name<input autoFocus required value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. At-risk partnerships"/></label><div className="composer-actions"><button type="button" onClick={onClose}>Cancel</button><button className="primary" type="submit"><CheckCircle size={17}/>Save view</button></div></form></div>;
 }
 
 function GoalComposer({ goal, onClose, onSave, onDelete }) {

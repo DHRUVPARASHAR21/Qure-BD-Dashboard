@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DASHBOARD_STORE_KEY, createAction, createGoal, createSeedDashboard, deleteGoal, loadDashboard, markRemindersSent, saveDashboard, saveWeeklyReviewNote, toggleActionComplete, updateGoal } from '../src/data/dashboardStore.js';
+import { DASHBOARD_STORE_KEY, createAction, createGoal, createSavedView, createSeedDashboard, deleteGoal, deleteSavedView, loadDashboard, markRemindersSent, saveDashboard, saveTrackerFilters, saveWeeklyReviewNote, toggleActionComplete, updateGoal } from '../src/data/dashboardStore.js';
 
 function memoryStorage() {
   const values = new Map();
@@ -62,4 +62,16 @@ test('creates, edits and removes goal milestones', () => {
   assert.equal(updated.goals.at(-1).owner, 'Ananya Rao');
   assert.equal(updated.goals.at(-1).confidence, 55);
   assert.equal(deleteGoal(updated, added.id).goals.length, initial.goals.length);
+});
+
+test('persists tracker filters and saved views', () => {
+  const storage = memoryStorage();
+  const filtered = saveTrackerFilters(createSeedDashboard(), { owner: 'Ananya Rao', status: 'At risk' });
+  const withView = createSavedView(filtered, 'At-risk partnerships', filtered.tracker.filters);
+  assert.equal(withView.tracker.savedViews[0].name, 'At-risk partnerships');
+  assert.equal(withView.tracker.filters.owner, 'Ananya Rao');
+  saveDashboard(withView, storage);
+  const reloaded = loadDashboard(storage);
+  assert.equal(reloaded.tracker.savedViews.length, 1);
+  assert.equal(deleteSavedView(reloaded, reloaded.tracker.savedViews[0].id).tracker.savedViews.length, 0);
 });
