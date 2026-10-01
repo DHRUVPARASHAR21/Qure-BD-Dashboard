@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DASHBOARD_STORE_KEY, createSeedDashboard, loadDashboard, saveDashboard } from '../src/data/dashboardStore.js';
+import { DASHBOARD_STORE_KEY, createAction, createSeedDashboard, loadDashboard, markRemindersSent, saveDashboard, toggleActionComplete } from '../src/data/dashboardStore.js';
 
 function memoryStorage() {
   const values = new Map();
@@ -26,4 +26,14 @@ test('recovers safely from corrupt stored data', () => {
   const storage = memoryStorage();
   storage.setItem(DASHBOARD_STORE_KEY, '{invalid json');
   assert.equal(loadDashboard(storage).goals.length, 5);
+});
+
+test('creates, completes and timestamps action reminders', () => {
+  const initial = createSeedDashboard();
+  const withAction = createAction(initial, { title: 'Review APAC evidence scope', owner: 'Ananya Rao', dueDate: '10 Oct' });
+  const completed = toggleActionComplete(withAction, withAction.tasks.at(-1).id);
+  const reminded = markRemindersSent(completed);
+  assert.equal(reminded.tasks.length, 5);
+  assert.equal(reminded.tasks.at(-1).status, 'Complete');
+  assert.equal(reminded.tasks[0].reminderSentAt.length > 0, true);
 });

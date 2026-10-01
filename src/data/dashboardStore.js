@@ -1,5 +1,5 @@
 export const DASHBOARD_STORE_KEY = 'qure.life-sciences-bd.dashboard.v1';
-export const DASHBOARD_SCHEMA_VERSION = 1;
+export const DASHBOARD_SCHEMA_VERSION = 2;
 
 const seedGoals = [
   ['Close Novartis evidence collaboration', 'Strategic pharma partnerships', 'Ananya Rao', 'At risk', '2 / 4', '18 Oct', 62],
@@ -10,10 +10,10 @@ const seedGoals = [
 ];
 
 const seedTasks = [
-  ['Confirm clinical endpoint assumptions', 'Dr. Meera Shah', 'Today', 'Overdue'],
-  ['Resolve Novartis DPA redlines', 'Ananya Rao', '02 Oct', 'In progress'],
-  ['Approve Roche pricing guardrails', 'Amit Kulkarni', '03 Oct', 'Not started'],
-  ['Publish GCC whitespace brief', 'Vikram Iyer', '07 Oct', 'In progress'],
+  { id: 'act-clinical-endpoints', title: 'Confirm clinical endpoint assumptions', owner: 'Dr. Meera Shah', dueDate: 'Today', status: 'Overdue' },
+  { id: 'act-novartis-dpa', title: 'Resolve Novartis DPA redlines', owner: 'Ananya Rao', dueDate: '02 Oct', status: 'In progress' },
+  { id: 'act-roche-pricing', title: 'Approve Roche pricing guardrails', owner: 'Amit Kulkarni', dueDate: '03 Oct', status: 'Not started' },
+  { id: 'act-gcc-brief', title: 'Publish GCC whitespace brief', owner: 'Vikram Iyer', dueDate: '07 Oct', status: 'In progress' },
 ];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -24,6 +24,22 @@ export function createSeedDashboard() {
 
 function isDashboard(value) {
   return value && value.schemaVersion === DASHBOARD_SCHEMA_VERSION && Array.isArray(value.goals) && Array.isArray(value.tasks);
+}
+
+function migrateDashboard(value) {
+  if (!value || value.schemaVersion !== 1 || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
+  return {
+    schemaVersion: DASHBOARD_SCHEMA_VERSION,
+    goals: value.goals,
+    tasks: value.tasks.map((task, index) => Array.isArray(task) ? {
+      id: `migrated-action-${index}`,
+      title: task[0],
+      owner: task[1],
+      dueDate: task[2],
+      status: task[3],
+    } : task),
+    savedAt: value.savedAt ?? null,
+  };
 }
 
 function browserStorage() {
@@ -37,8 +53,41 @@ export function loadDashboard(storage = browserStorage()) {
     const saved = storage.getItem(DASHBOARD_STORE_KEY);
     if (!saved) return createSeedDashboard();
     const parsed = JSON.parse(saved);
-    return isDashboard(parsed) ? parsed : createSeedDashboard();
+    return isDashboard(parsed) ? parsed : migrateDashboard(parsed) ?? createSeedDashboard();
   } catch { return createSeedDashboard(); }
+}
+
+export function createAction(dashboard, action) {
+  const title = action.title?.trim();
+  const owner = action.owner?.trim();
+  if (!title || !owner || !action.dueDate) return dashboard;
+  return {
+    ...dashboard,
+    tasks: [...dashboard.tasks, {
+      id: globalThis.crypto?.randomUUID?.() ?? `action-${Date.now()}`,
+      title,
+      owner,
+      dueDate: action.dueDate,
+      status: action.status ?? 'Not started',
+      createdAt: new Date().toISOString(),
+    }],
+  };
+}
+
+export function toggleActionComplete(dashboard, actionId) {
+  return {
+    ...dashboard,
+    tasks: dashboard.tasks.map((task) => task.id === actionId ? {
+      ...task,
+      status: task.status === 'Complete' ? 'In progress' : 'Complete',
+      completedAt: task.status === 'Complete' ? null : new Date().toISOString(),
+    } : task),
+  };
+}
+
+export function markRemindersSent(dashboard) {
+  const sentAt = new Date().toISOString();
+  return { ...dashboard, tasks: dashboard.tasks.map((task) => task.status === 'Complete' ? task : { ...task, reminderSentAt: sentAt }) };
 }
 
 export function saveDashboard(dashboard, storage = browserStorage()) {
