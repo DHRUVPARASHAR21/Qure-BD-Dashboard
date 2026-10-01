@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DASHBOARD_STORE_KEY, createAction, createSeedDashboard, loadDashboard, markRemindersSent, saveDashboard, toggleActionComplete } from '../src/data/dashboardStore.js';
+import { DASHBOARD_STORE_KEY, createAction, createSeedDashboard, loadDashboard, markRemindersSent, saveDashboard, saveWeeklyReviewNote, toggleActionComplete } from '../src/data/dashboardStore.js';
 
 function memoryStorage() {
   const values = new Map();
@@ -36,4 +36,13 @@ test('creates, completes and timestamps action reminders', () => {
   assert.equal(reminded.tasks.length, 5);
   assert.equal(reminded.tasks.at(-1).status, 'Complete');
   assert.equal(reminded.tasks[0].reminderSentAt.length > 0, true);
+});
+
+test('saves weekly review notes across storage reloads', () => {
+  const storage = memoryStorage();
+  const withNote = saveWeeklyReviewNote(createSeedDashboard(), 'Legal confirmed the Novartis DPA route.');
+  assert.equal(withNote.weeklyReview.notes[0].body, 'Legal confirmed the Novartis DPA route.');
+  assert.ok(withNote.weeklyReview.notes[0].savedAt);
+  saveDashboard(withNote, storage);
+  assert.equal(loadDashboard(storage).weeklyReview.notes[0].body, 'Legal confirmed the Novartis DPA route.');
 });

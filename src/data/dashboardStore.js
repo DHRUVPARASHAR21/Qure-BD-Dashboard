@@ -1,5 +1,5 @@
 export const DASHBOARD_STORE_KEY = 'qure.life-sciences-bd.dashboard.v1';
-export const DASHBOARD_SCHEMA_VERSION = 2;
+export const DASHBOARD_SCHEMA_VERSION = 3;
 
 const seedGoals = [
   ['Close Novartis evidence collaboration', 'Strategic pharma partnerships', 'Ananya Rao', 'At risk', '2 / 4', '18 Oct', 62],
@@ -19,15 +19,21 @@ const seedTasks = [
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 export function createSeedDashboard() {
-  return { schemaVersion: DASHBOARD_SCHEMA_VERSION, goals: clone(seedGoals), tasks: clone(seedTasks), savedAt: null };
+  return {
+    schemaVersion: DASHBOARD_SCHEMA_VERSION,
+    goals: clone(seedGoals),
+    tasks: clone(seedTasks),
+    weeklyReview: { notes: [], savedAt: null },
+    savedAt: null,
+  };
 }
 
 function isDashboard(value) {
-  return value && value.schemaVersion === DASHBOARD_SCHEMA_VERSION && Array.isArray(value.goals) && Array.isArray(value.tasks);
+  return value && value.schemaVersion === DASHBOARD_SCHEMA_VERSION && Array.isArray(value.goals) && Array.isArray(value.tasks) && Array.isArray(value.weeklyReview?.notes);
 }
 
 function migrateDashboard(value) {
-  if (!value || value.schemaVersion !== 1 || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
+  if (!value || ![1, 2].includes(value.schemaVersion) || !Array.isArray(value.goals) || !Array.isArray(value.tasks)) return null;
   return {
     schemaVersion: DASHBOARD_SCHEMA_VERSION,
     goals: value.goals,
@@ -38,6 +44,7 @@ function migrateDashboard(value) {
       dueDate: task[2],
       status: task[3],
     } : task),
+    weeklyReview: { notes: [], savedAt: null },
     savedAt: value.savedAt ?? null,
   };
 }
@@ -88,6 +95,20 @@ export function toggleActionComplete(dashboard, actionId) {
 export function markRemindersSent(dashboard) {
   const sentAt = new Date().toISOString();
   return { ...dashboard, tasks: dashboard.tasks.map((task) => task.status === 'Complete' ? task : { ...task, reminderSentAt: sentAt }) };
+}
+
+export function saveWeeklyReviewNote(dashboard, text) {
+  const body = text?.trim();
+  if (!body) return dashboard;
+  const savedAt = new Date().toISOString();
+  const existingNotes = dashboard.weeklyReview?.notes ?? [];
+  return {
+    ...dashboard,
+    weeklyReview: {
+      notes: [{ id: globalThis.crypto?.randomUUID?.() ?? `review-note-${Date.now()}`, body, savedAt }, ...existingNotes],
+      savedAt,
+    },
+  };
 }
 
 export function saveDashboard(dashboard, storage = browserStorage()) {
